@@ -40,17 +40,53 @@ find_package(LLVM CONFIG REQUIRED)
 if(LLVM_LINK_LLVM_DYLIB)
   set(llvm_libs LLVM)
 else()
-  llvm_map_components_to_libnames(llvm_libs
+  # Core components always needed
+  set(_remill_llvm_components
     support core irreader
     bitreader bitwriter
     passes asmprinter
-    aarch64info aarch64desc aarch64codegen aarch64asmparser
-    armcodegen armasmparser
     interpreter mcjit
-    nvptxdesc
     x86info x86codegen x86asmparser
-    sparccodegen sparcasmparser
-    webassemblydesc)
+  )
+
+  # Optional arch components — only add if the target was built into LLVM
+  foreach(_target aarch64 arm sparc webassembly nvptx)
+    string(TOUPPER "${_target}" _target_upper)
+    list(FIND LLVM_TARGETS_TO_BUILD "${_target_upper}" _idx)
+    # Also try mixed case names used by LLVM
+    if(_idx EQUAL -1)
+      foreach(_candidate ${LLVM_TARGETS_TO_BUILD})
+        string(TOUPPER "${_candidate}" _candidate_upper)
+        if(_candidate_upper STREQUAL _target_upper)
+          set(_idx 0)
+          break()
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+
+  # Add AArch64 if available
+  if("AArch64" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND _remill_llvm_components aarch64info aarch64desc aarch64codegen aarch64asmparser)
+  endif()
+  # Add ARM if available
+  if("ARM" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND _remill_llvm_components armcodegen armasmparser)
+  endif()
+  # Add SPARC if available
+  if("Sparc" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND _remill_llvm_components sparccodegen sparcasmparser)
+  endif()
+  # Add NVPTX if available
+  if("NVPTX" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND _remill_llvm_components nvptxdesc)
+  endif()
+  # Add WebAssembly if available
+  if("WebAssembly" IN_LIST LLVM_TARGETS_TO_BUILD)
+    list(APPEND _remill_llvm_components webassemblydesc)
+  endif()
+
+  llvm_map_components_to_libnames(llvm_libs ${_remill_llvm_components})
 endif()
 message(STATUS "LLVM Libraries: ${llvm_libs}")
 
@@ -108,6 +144,17 @@ FetchContent_Declare(sleigh
   GIT_TAG 7c6b742
 )
 FetchContent_MakeAvailable(sleigh)
+
+# Fix Windows UNICODE issue: the Ghidra/sleigh source uses narrow-char Win32
+# APIs (GetFileAttributes etc.) but LLVM's global definitions set UNICODE,
+# causing the macros to resolve to wide-char variants.
+if(WIN32)
+  foreach(_sleigh_tgt sleigh_sleigh sleigh_sla sleigh_decomp sleigh_support)
+    if(TARGET ${_sleigh_tgt})
+      target_compile_options(${_sleigh_tgt} PRIVATE -UUNICODE -U_UNICODE)
+    endif()
+  endforeach()
+endif()
 
 # Get the Ghidra source directory from FetchContent's internal tracking
 FetchContent_GetProperties(GhidraSource)
