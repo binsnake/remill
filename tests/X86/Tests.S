@@ -395,6 +395,7 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/BINARY/SUBSD.S"
 #include "tests/X86/BINARY/SUBSS.S"
 
+#include "tests/X86/BITBYTE/BEXTR.S"
 #include "tests/X86/BITBYTE/BSF.S"
 #include "tests/X86/BITBYTE/BSR.S"
 #include "tests/X86/BITBYTE/BSWAP.S"
@@ -403,6 +404,7 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/BITBYTE/BTR.S"
 #include "tests/X86/BITBYTE/BTS.S"
 #include "tests/X86/BITBYTE/LZCNT.S"
+#include "tests/X86/BITBYTE/POPCNT.S"
 #include "tests/X86/BITBYTE/SETcc.S"
 #include "tests/X86/BITBYTE/TZCNT.S"
 

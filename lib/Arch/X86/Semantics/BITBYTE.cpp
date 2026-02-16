@@ -336,6 +336,68 @@ DEF_ISEL_RnW_Mn(LZCNT_GPRv_MEMv, LZCNT);
 DEF_ISEL_RnW_Rn(LZCNT_GPRv_GPRv, LZCNT);
 
 namespace {
+
+template <typename D, typename S>
+DEF_SEM(POPCNT, D dst, S src) {
+  auto val = Read(src);
+  auto count = CountPopulation(val);
+  WriteZExt(dst, count);
+  Write(FLAG_CF, false);
+  Write(FLAG_OF, false);
+  Write(FLAG_SF, false);
+  Write(FLAG_AF, false);
+  Write(FLAG_PF, false);
+  Write(FLAG_ZF, ZeroFlag(val));
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL_RnW_Mn(POPCNT_GPRv_MEMv, POPCNT);
+DEF_ISEL_RnW_Rn(POPCNT_GPRv_GPRv, POPCNT);
+
+namespace {
+
+template <typename D, typename S1, typename S2>
+DEF_SEM(BEXTR, D dst, S1 src1, S2 src2) {
+  auto val = Read(src1);
+  auto ctrl = Read(src2);
+  using T = typename BaseType<S1>::BT;
+  auto start = ZExtTo<S1>(TruncTo<uint8_t>(ctrl));
+  auto len = ZExtTo<S1>(TruncTo<uint8_t>(UShr(ctrl, Literal<S2>(8))));
+  auto bit_width = BitSizeOf(src1);
+
+  // TEMP := ZERO_EXTEND_TO_512(SRC1); DEST := TEMP[START+LEN-1 : START]
+  // If start >= bitwidth, shift is UB in C++ but Intel says result is 0.
+  auto start_in_range = UCmpLt(start, bit_width);
+  auto shifted = Select(start_in_range, UShr(val, start), Literal<S1>(0));
+
+  // If len >= bitwidth, no masking needed (all bits kept).
+  // If len == 0, mask is 0 (result is 0).
+  auto len_in_range = UCmpLt(len, bit_width);
+  auto mask = Select(len_in_range,
+                     USub(UShl(Literal<S1>(1), len), Literal<S1>(1)),
+                     static_cast<T>(~static_cast<T>(0)));
+  auto result = UAnd(shifted, mask);
+  WriteZExt(dst, result);
+  Write(FLAG_ZF, ZeroFlag(result));
+  Write(FLAG_CF, false);
+  Write(FLAG_OF, false);
+  // SF, AF, PF are undefined per spec
+  Write(FLAG_SF, BUndefined());
+  Write(FLAG_AF, BUndefined());
+  Write(FLAG_PF, BUndefined());
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(BEXTR_VGPR32d_VGPR32d_VGPR32d) = BEXTR<R32W, R32, R32>;
+DEF_ISEL(BEXTR_VGPR32d_MEMd_VGPR32d) = BEXTR<R32W, M32, R32>;
+IF_64BIT(DEF_ISEL(BEXTR_VGPR64q_VGPR64q_VGPR64q) = BEXTR<R64W, R64, R64>;)
+IF_64BIT(DEF_ISEL(BEXTR_VGPR64q_MEMq_VGPR64q) = BEXTR<R64W, M64, R64>;)
+
+namespace {
 template <typename D, typename S>
 DEF_SEM(BSR, D dst, S src) {
   auto val = Read(src);

@@ -1653,6 +1653,20 @@ MAKE_BUILTIN(CountTrailingZeros, 64, 64, __builtin_ctzll, 0)
 
 #undef MAKE_BUILTIN
 
+// Population count (number of set bits).  No special zero handling needed.
+ALWAYS_INLINE static uint8_t CountPopulation(uint8_t val) {
+  return static_cast<uint8_t>(__builtin_popcount(static_cast<unsigned>(val)));
+}
+ALWAYS_INLINE static uint16_t CountPopulation(uint16_t val) {
+  return static_cast<uint16_t>(__builtin_popcount(static_cast<unsigned>(val)));
+}
+ALWAYS_INLINE static uint32_t CountPopulation(uint32_t val) {
+  return static_cast<uint32_t>(__builtin_popcount(val));
+}
+ALWAYS_INLINE static uint64_t CountPopulation(uint64_t val) {
+  return static_cast<uint64_t>(__builtin_popcountll(val));
+}
+
 
 #define MAKE_BUILTIN_INTRINSIC(name, intrinsic_name, size, type) \
   ALWAYS_INLINE static type name(type val) { \
