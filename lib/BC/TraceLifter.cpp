@@ -94,7 +94,16 @@ class TraceLifter::Impl {
   llvm::BasicBlock *GetOrCreateBlock(uint64_t block_pc) {
     auto &block = blocks[block_pc];
     if (!block) {
-      block = llvm::BasicBlock::Create(context, "", func);
+      // Only name blocks that came from devirtualized targets (jump table
+      // analysis).  Naming ALL blocks block_<hex> would confuse omill passes
+      // that use extractBlockPC / collectBlockPCMap throughout the pipeline.
+      std::string name;
+      if (devirt_targets.count(block_pc)) {
+        std::stringstream ss;
+        ss << "block_" << std::hex << block_pc;
+        name = ss.str();
+      }
+      block = llvm::BasicBlock::Create(context, name, func);
     }
     return block;
   }
@@ -146,6 +155,7 @@ class TraceLifter::Impl {
   Instruction delayed_inst;
   DecoderWorkList trace_work_list;
   DecoderWorkList inst_work_list;
+  DecoderWorkList devirt_targets;  // PCs from ForEachDevirtualizedTarget
   std::map<uint64_t, llvm::BasicBlock *> blocks;
 };
 
@@ -244,6 +254,7 @@ bool TraceLifter::Impl::Lift(
   // Reset the lifting state.
   trace_work_list.clear();
   inst_work_list.clear();
+  devirt_targets.clear();
   blocks.clear();
   inst_bytes.clear();
   func = nullptr;
@@ -279,6 +290,7 @@ bool TraceLifter::Impl::Lift(
 
     func = get_trace_decl(trace_addr);
     blocks.clear();
+    devirt_targets.clear();
 
     if (!func || !func->isDeclaration()) {
       func = arch->DeclareLiftedFunction(manager.TraceName(trace_addr), module);
@@ -408,6 +420,17 @@ bool TraceLifter::Impl::Lift(
         case Instruction::kCategoryIndirectJump: {
           try_add_delay_slot(true, block);
           AddTerminatingTailCall(block, intrinsics->jump, *intrinsics);
+
+          // Ask the trace manager for devirtualized targets (e.g. from
+          // binary-level jump table analysis).  Add them to the instruction
+          // worklist so they are lifted as blocks within the current trace,
+          // enabling intra-function dispatch.
+          manager.ForEachDevirtualizedTarget(
+              inst,
+              [this](uint64_t target, DevirtualizedTargetKind) {
+                inst_work_list.insert(target);
+                devirt_targets.insert(target);
+              });
           break;
         }
 
